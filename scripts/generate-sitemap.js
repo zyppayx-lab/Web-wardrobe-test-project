@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { initBuild, safeSlug } from "./build.js";
+import { fetchPosts } from "../firebase/client.js";
+import { safeSlug } from "./build.js";
 
 const BASE_URL = "https://webwardrobe.name.ng";
 
@@ -10,7 +11,8 @@ function buildUrl(post) {
 }
 
 async function run() {
-  const posts = await initBuild();
+  // ❌ DO NOT call initBuild again
+  const posts = await fetchPosts();
 
   const urls = posts.map(p => `
 <url>
