@@ -3,13 +3,15 @@ import path from "path";
 import { fetchPosts } from "../firebase/client.js";
 
 /**
- * OUTPUT DIRECTORY (STATIC SITE)
+ * DIST OUTPUT
  */
 const DIST = path.join(process.cwd(), "dist");
+const BASE_URL = "https://webwardrobe.name.ng";
 
-/**
- * CLEAN BUILD (DO NOT DELETE MANUALLY)
- */
+/* =========================
+   UTILITIES
+========================= */
+
 function cleanDist() {
   if (fs.existsSync(DIST)) {
     fs.rmSync(DIST, { recursive: true, force: true });
@@ -17,11 +19,17 @@ function cleanDist() {
   fs.mkdirSync(DIST, { recursive: true });
 }
 
-/**
- * SAFE SLUG (SEO URL ENGINE)
- */
-function safeSlug(text) {
-  return (text || "")
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function writeFile(filePath, content) {
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, content);
+}
+
+function safeSlug(text = "") {
+  return text
     .toString()
     .toLowerCase()
     .trim()
@@ -29,9 +37,6 @@ function safeSlug(text) {
     .replace(/(^-|-$)/g, "");
 }
 
-/**
- * BASIC HTML ESCAPE (SECURITY + SEO SAFETY)
- */
 function escapeHtml(str = "") {
   return str
     .replace(/&/g, "&amp;")
@@ -39,18 +44,18 @@ function escapeHtml(str = "") {
     .replace(/>/g, "&gt;");
 }
 
-/**
- * LOAD POSTS FROM FIREBASE
- */
-async function loadData() {
+/* =========================
+   DATA LAYER
+========================= */
+
+async function loadPosts() {
   const posts = await fetchPosts();
 
-  // normalize + safety mapping
   return posts.map(p => ({
     id: p.id,
     title: p.title || "Untitled",
     slug: p.slug || safeSlug(p.title),
-    category: p.category || "uncategorized",
+    category: (p.category || "uncategorized").toLowerCase(),
     shortDescription: p.shortDescription || "",
     longDescription: p.longDescription || "",
     media: p.media || [],
@@ -62,55 +67,26 @@ async function loadData() {
   }));
 }
 
-/**
- * SORTING ENGINE (SEO PRIORITY LOGIC)
- */
 function sortPosts(posts) {
-  return posts.sort((a, b) => {
-    const aScore = (a.views || 0);
-    const bScore = (b.views || 0);
-    return bScore - aScore;
-  });
+  return posts.sort((a, b) => (b.views || 0) - (a.views || 0));
 }
 
-/**
- * INIT BUILD PIPELINE
- */
-async function initBuild() {
-  cleanDist();
+function groupByCategory(posts) {
+  const map = {};
 
-  let posts = await loadData();
-  posts = sortPosts(posts);
+  for (const p of posts) {
+    const cat = p.category || "uncategorized";
+    if (!map[cat]) map[cat] = [];
+    map[cat].push(p);
+  }
 
-  console.log(`Loaded ${posts.length} posts from Firebase`);
-
-  return posts;
+  return map;
 }
 
-export {
-  initBuild,
-  safeSlug,
-  escapeHtml
-};
-import { initBuild, safeSlug, escapeHtml } from "./generate.js";
-import fs from "fs";
-import path from "path";
+/* =========================
+   PAGE BUILDERS
+========================= */
 
-/**
- * BASE URL (CHANGE IF NEEDED)
- */
-const BASE_URL = "https://webwardrobe.name.ng";
-
-/**
- * CREATE DIRECTORY SAFELY
- */
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-/**
- * HOMEPAGE BUILDER (SEO INDEX PAGE)
- */
 function buildHomePage(posts) {
   const latest = posts.slice(0, 12);
 
@@ -136,34 +112,23 @@ body{font-family:Arial;background:#fafafa;margin:0;padding:20px;}
 .card img{width:100%;height:140px;object-fit:cover;}
 .card h3{font-size:14px;padding:10px;}
 </style>
-
 </head>
 <body>
-
 <div class="container">
-
 <h1>Web Wardrobe</h1>
-
 <div class="grid">
-
 ${latest.map(p => `
 <a class="card" href="/${p.category}/${p.slug}.html">
-<img src="${p.media?.[0] || ''}">
+<img src="${p.media?.[0] || ""}">
 <h3>${escapeHtml(p.title)}</h3>
 </a>
 `).join("")}
-
 </div>
-
 </div>
-
 </body>
 </html>`;
 }
 
-/**
- * CATEGORY PAGE BUILDER
- */
 function buildCategoryPage(category, posts) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -172,7 +137,7 @@ function buildCategoryPage(category, posts) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>${category} | Web Wardrobe</title>
-<meta name="description" content="Latest ${category} inspiration on Web Wardrobe.">
+<meta name="description" content="Latest ${category} content on Web Wardrobe.">
 <link rel="canonical" href="${BASE_URL}/${category}/">
 
 <meta property="og:title" content="${category}">
@@ -186,34 +151,23 @@ body{font-family:Arial;background:#fafafa;margin:0;padding:20px;}
 .card img{width:100%;height:140px;object-fit:cover;}
 .card h3{font-size:14px;padding:10px;}
 </style>
-
 </head>
 <body>
-
 <div class="container">
-
 <h1>${category}</h1>
-
 <div class="grid">
-
 ${posts.map(p => `
 <a class="card" href="/${p.category}/${p.slug}.html">
-<img src="${p.media?.[0] || ''}">
+<img src="${p.media?.[0] || ""}">
 <h3>${escapeHtml(p.title)}</h3>
 </a>
 `).join("")}
-
 </div>
-
 </div>
-
 </body>
 </html>`;
 }
 
-/**
- * ARTICLE PAGE BUILDER (SEO CORE)
- */
 function buildArticlePage(post) {
   const image = post.media?.[0] || "";
 
@@ -256,126 +210,57 @@ body{font-family:Arial;background:#fafafa;margin:0;padding:20px;}
 .container{max-width:800px;margin:auto;background:#fff;padding:20px;border-radius:12px;}
 img{width:100%;border-radius:12px;margin:20px 0;}
 </style>
-
 </head>
 <body>
-
 <div class="container">
-
 <h1>${escapeHtml(post.title)}</h1>
-
 <img src="${image}" />
-
 <p>${escapeHtml(post.longDescription)}</p>
-
 </div>
-
 </body>
 </html>`;
 }
 
-/**
- * CATEGORY GROUPING
- */
-function groupByCategory(posts) {
-  const map = {};
+/* =========================
+   BUILD PIPELINE
+========================= */
 
-  posts.forEach(p => {
-    const cat = p.category || "uncategorized";
-    if (!map[cat]) map[cat] = [];
-    map[cat].push(p);
-  });
+export async function runBuild() {
+  console.log("Starting SEO build...");
 
-  return map;
-   }
-import {
-  initBuild,
-  safeSlug
-} from "./generate.js";
+  cleanDist();
 
-import fs from "fs";
-import path from "path";
+  let posts = await loadPosts();
+  posts = sortPosts(posts);
 
-/* IMPORT BUILDERS FROM PART 2 */
-import {
-  buildHomePage,
-  buildCategoryPage,
-  buildArticlePage,
-  groupByCategory
-} from "./generate.js";
-
-/**
- * DIST PATH
- */
-const DIST = path.join(process.cwd(), "dist");
-
-/**
- * ENSURE DIR
- */
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-/**
- * WRITE FILE SAFE
- */
-function writeFile(filePath, content) {
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, content);
-}
-
-/**
- * MAIN BUILD PIPELINE
- */
-async function runBuild() {
-  console.log("Starting Web Wardrobe SEO build...");
-
-  const posts = await initBuild();
+  console.log(`Loaded ${posts.length} posts`);
 
   const grouped = groupByCategory(posts);
 
-  /* 1. BUILD HOMEPAGE */
-  const homeHTML = buildHomePage(posts);
-  writeFile(path.join(DIST, "index.html"), homeHTML);
+  /* HOME */
+  writeFile(
+    path.join(DIST, "index.html"),
+    buildHomePage(posts)
+  );
 
-  console.log("Homepage built");
-
-  /* 2. BUILD CATEGORY PAGES */
+  /* CATEGORY PAGES */
   Object.keys(grouped).forEach(category => {
-    const categoryPath = path.join(DIST, category);
-
-    const html = buildCategoryPage(category, grouped[category]);
-
-    writeFile(path.join(categoryPath, "index.html"), html);
-
-    console.log(`Category built: ${category}`);
-  });
-
-  /* 3. BUILD ARTICLE PAGES */
-  posts.forEach(post => {
-    const slug = safeSlug(post.slug || post.title);
-    const category = post.category || "uncategorized";
-
-    const filePath = path.join(
-      DIST,
-      category,
-      `${slug}.html`
+    writeFile(
+      path.join(DIST, category, "index.html"),
+      buildCategoryPage(category, grouped[category])
     );
-
-    const html = buildArticlePage({
-      ...post,
-      slug
-    });
-
-    writeFile(filePath, html);
-
-    console.log(`Article built: ${slug}`);
   });
 
-  console.log("SEO build completed successfully.");
+  /* ARTICLE PAGES */
+  for (const post of posts) {
+    writeFile(
+      path.join(DIST, post.category, `${post.slug}.html`),
+      buildArticlePage(post)
+    );
+  }
+
+  console.log("SEO build completed successfully");
 }
 
-/**
- * RUN BUILD
- */
+/* AUTO RUN */
 runBuild();
