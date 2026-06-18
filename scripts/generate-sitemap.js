@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { initBuild, safeSlug } from "./generate.js";
+import { initBuild, safeSlug } from "./build.js";
 
 const BASE_URL = "https://webwardrobe.name.ng";
 
