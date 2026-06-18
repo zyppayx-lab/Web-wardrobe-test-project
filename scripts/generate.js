@@ -2,14 +2,11 @@ import fs from "fs";
 import path from "path";
 import { fetchPosts } from "../firebase/client.js";
 
-/**
- * OUTPUT DIRECTORY
- */
 const DIST = path.join(process.cwd(), "dist");
 const BASE_URL = "https://webwardrobe.name.ng";
 
 /* =========================
-   FILE SYSTEM HELPERS
+   FILE SYSTEM
 ========================= */
 
 function cleanDist() {
@@ -25,31 +22,35 @@ function ensureDir(dir) {
 
 function writeFile(filePath, content) {
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, content);
+  fs.writeFileSync(filePath, content, "utf8");
 }
 
 /* =========================
-   UTILITIES
+   UTILITIES (SEO SAFE)
 ========================= */
 
 function safeSlug(text = "") {
-  return text
-    .toString()
+  return String(text)
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
 
+function safeFolder(text = "") {
+  return safeSlug(text || "uncategorized");
+}
+
 function escapeHtml(str = "") {
-  return str
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /* =========================
-   DATA FETCH
+   DATA
 ========================= */
 
 async function loadPosts() {
@@ -59,7 +60,7 @@ async function loadPosts() {
     id: p.id,
     title: p.title || "Untitled",
     slug: p.slug || safeSlug(p.title),
-    category: (p.category || "uncategorized").toLowerCase(),
+    category: safeFolder(p.category),
     shortDescription: p.shortDescription || "",
     longDescription: p.longDescription || "",
     media: p.media || [],
@@ -75,7 +76,7 @@ function groupByCategory(posts) {
   const map = {};
 
   for (const p of posts) {
-    const cat = p.category || "uncategorized";
+    const cat = p.category;
     if (!map[cat]) map[cat] = [];
     map[cat].push(p);
   }
@@ -84,7 +85,7 @@ function groupByCategory(posts) {
 }
 
 /* =========================
-   PAGE BUILDERS
+   PAGES
 ========================= */
 
 function buildHomePage(posts) {
@@ -96,21 +97,19 @@ function buildHomePage(posts) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Web Wardrobe | Fashion, Furniture & Lifestyle</title>
-<meta name="description" content="Discover fashion, furniture, interior and lifestyle inspiration.">
+<title>Web Wardrobe | Fashion & Lifestyle</title>
+<meta name="description" content="Fashion, furniture, interior and lifestyle inspiration">
 <link rel="canonical" href="${BASE_URL}">
 </head>
 <body>
 
 <h1>Web Wardrobe</h1>
 
-<div>
 ${latest.map(p => `
   <a href="/${p.category}/${p.slug}.html">
-    <h3>${escapeHtml(p.title)}</h3>
-  </a>
+    ${escapeHtml(p.title)}
+  </a><br>
 `).join("")}
-</div>
 
 </body>
 </html>`;
@@ -124,20 +123,18 @@ function buildCategoryPage(category, posts) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>${category} | Web Wardrobe</title>
-<meta name="description" content="Latest ${category} posts on Web Wardrobe.">
+<meta name="description" content="${category} content on Web Wardrobe">
 <link rel="canonical" href="${BASE_URL}/${category}/">
 </head>
 <body>
 
 <h1>${category}</h1>
 
-<div>
 ${posts.map(p => `
   <a href="/${p.category}/${p.slug}.html">
-    <h3>${escapeHtml(p.title)}</h3>
-  </a>
+    ${escapeHtml(p.title)}
+  </a><br>
 `).join("")}
-</div>
 
 </body>
 </html>`;
@@ -173,7 +170,7 @@ function buildArticlePage(post) {
 }
 
 /* =========================
-   MAIN BUILD PROCESS
+   BUILD ENGINE
 ========================= */
 
 async function runBuild() {
@@ -189,20 +186,19 @@ async function runBuild() {
   const grouped = groupByCategory(posts);
 
   /* HOME */
-  writeFile(
-    path.join(DIST, "index.html"),
-    buildHomePage(posts)
-  );
+  writeFile(path.join(DIST, "index.html"), buildHomePage(posts));
 
   /* CATEGORY PAGES */
   for (const category in grouped) {
+    const catPath = path.join(DIST, category);
+
     writeFile(
-      path.join(DIST, category, "index.html"),
+      path.join(catPath, "index.html"),
       buildCategoryPage(category, grouped[category])
     );
   }
 
-  /* ARTICLE PAGES */
+  /* ARTICLES */
   for (const post of posts) {
     writeFile(
       path.join(DIST, post.category, `${post.slug}.html`),
@@ -213,5 +209,4 @@ async function runBuild() {
   console.log("SEO build completed successfully");
 }
 
-/* EXECUTE */
 runBuild();
